@@ -3,11 +3,12 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
+from datetime import datetime
 import yfinance as yf
 import requests
 from bs4 import BeautifulSoup
 import re
+import os
 
 # Configure the Streamlit page
 st.set_page_config(page_title="H100 Live Rental Index", page_icon="📈", layout="wide")
@@ -37,14 +38,24 @@ def scrape_live_h100_price():
         valid_prices = [float(p) for p in prices if 1.0 <= float(p) <= 10.0]
         
         if valid_prices:
-            # Return the median market rate to avoid outliers
+            # Return the median market rate
             return np.median(valid_prices)
         else:
-            return 2.85 # Failsafe baseline if website changes layout
+            return 2.85 
             
     except Exception as e:
         st.error(f"Scraping failed: {e}")
         return 2.85
+
+def load_historical_data():
+    """Reads the permanent database updated by GitHub Actions"""
+    try:
+        df = pd.read_csv('prices.csv')
+        df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+        return df
+    except Exception:
+        # If the file doesn't exist yet, return an empty dataframe
+        return pd.DataFrame(columns=['date', 'price'])
 
 @st.cache_data(ttl=3600)
 def fetch_stock_data():
@@ -59,39 +70,36 @@ def fetch_stock_data():
     except Exception:
         return pd.DataFrame()
 
-def generate_historical_context(live_price):
-    """
-    Since we can only scrape the *current* price today, we anchor a 
-    historical trend to today's real live price to draw the chart.
-    """
-    dates = pd.date_range(start=datetime.now() - timedelta(days=29), end=datetime.now(), freq='D')
-    
-    # We work backwards from today's REAL live price
-    historical_data = []
-    current_sim_price = live_price
-    
-    # Reverse the dates to calculate backwards
-    for date in reversed(dates):
-        historical_data.append({'date': date.strftime('%Y-%m-%d'), 'price': round(current_sim_price, 2)})
-        # Simulate slight daily market fluctuations leading up to today's real price
-        current_sim_price = current_sim_price * (1 + np.random.uniform(-0.015, 0.015))
-        
-    # Reverse the list back to chronological order
-    historical_data.reverse()
-    return pd.DataFrame(historical_data)
-
 def main():
-    # 1. Scrape the REAL live price right now
-    with st.spinner('Scraping live market data from gpus.io...'):
+    # 1. Scrape the current live price for the top metric card
+    with st.spinner('Checking current live market rate...'):
         live_price = scrape_live_h100_price()
         
-    # 2. Build the dataset anchored to the real live price
-    df = generate_historical_context(live_price)
+    # 2. Load the permanent historical data from your CSV
+    df = load_historical_data()
+    today_str = datetime.now().strftime('%Y-%m-%d')
     
-    current_price = df.iloc[-1]['price']
-    yesterday_price = df.iloc[-2]['price']
-    change_amt = current_price - yesterday_price
-    change_pct = (change_amt / yesterday_price) * 100
+    # 3. Combine live data with historical data so the chart is perfectly up to date
+    if not df.empty:
+        if today_str in df['date'].values:
+            df.loc[df['date'] == today_str, 'price'] = live_price
+        else:
+            new_row = pd.DataFrame({'date': [today_str], 'price': [live_price]})
+            df = pd.concat([df, new_row], ignore_index=True)
+    else:
+        # Failsafe if prices.csv hasn't been created yet
+        df = pd.DataFrame({'date': [today_str], 'price': [live_price]})
+    
+    # Calculate metrics
+    if len(df) >= 2:
+        current_price = df.iloc[-1]['price']
+        yesterday_price = df.iloc[-2]['price']
+        change_amt = current_price - yesterday_price
+        change_pct = (change_amt / yesterday_price) * 100
+    else:
+        current_price = live_price
+        change_amt = 0.0
+        change_pct = 0.0
 
     # Layout Metrics
     col1, col2, col3 = st.columns(3)
@@ -100,7 +108,7 @@ def main():
     with col2:
         st.metric(label="24h Change", value=f"${change_amt:,.2f}", delta=f"{change_pct:.2f}%")
     with col3:
-        st.metric(label="Data Source Status", value="Live (gpus.io)")
+        st.metric(label="Data Source Status", value="Live (gpus.io) + CSV DB")
 
     # Chart
     st.subheader("📊 Live Market Index vs NVDA Stock")
