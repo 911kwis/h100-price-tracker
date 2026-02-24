@@ -16,8 +16,8 @@ st.set_page_config(
 st.title("📊 NVIDIA H100 GPU Price Tracker")
 st.markdown("Real-time tracking of NVIDIA H100 GPU pricing trends")
 
-# The live data source URL
-JSON_URL = "https://raw.githubusercontent.com/yachty66/gpu-price-tracker/main/data/NVIDIA_H100_PCIe_80_GB.json"
+# The CORRECT live data source URL
+JSON_URL = "https://raw.githubusercontent.com/United-Compute/gpu-price-tracker/main/data/NVIDIA_H100_PCIe_80_GB.json"
 
 @st.cache_data(ttl=3600)  # Cache data for 1 hour to avoid spamming the API
 def fetch_price_data():
