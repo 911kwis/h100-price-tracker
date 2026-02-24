@@ -16,41 +16,58 @@ st.set_page_config(
 st.title("📊 NVIDIA H100 GPU Price Tracker")
 st.markdown("Real-time tracking of NVIDIA H100 GPU pricing trends")
 
-# Placeholder JSON URL (replace with actual data source later)
-JSON_URL = "https://api.example.com/gpu-prices/h100"
+# The live data source URL
+JSON_URL = "https://raw.githubusercontent.com/yachty66/gpu-price-tracker/main/data/NVIDIA_H100_PCIe_80_GB.json"
 
-@st.cache_data(ttl=3600)  # Cache data for 1 hour
+@st.cache_data(ttl=3600)  # Cache data for 1 hour to avoid spamming the API
 def fetch_price_data():
     """
-    Fetch price data. For now, this generates realistic sample data 
-    until we connect the live API.
+    Attempts to fetch live data from the JSON API. 
+    If it fails, it gracefully falls back to simulated data.
     """
     try:
-        # Generate 30 days of sample price data
-        dates = pd.date_range(start=datetime.now() - timedelta(days=29), end=datetime.now(), freq='D')
+        # 1. Try to pull the live data from the internet
+        response = requests.get(JSON_URL, timeout=5)
         
-        # Simulate realistic H100 pricing (around $25,000-$35,000)
-        random.seed(42)  # For consistent demo data
+        # If the web request is successful (Status Code 200)
+        if response.status_code == 200:
+            raw_data = response.json()
+            df = pd.DataFrame(raw_data)
+            
+            # Clean up the JSON data to match our dashboard's format
+            # Assuming the JSON provides a 'timestamp' in seconds
+            df['date'] = pd.to_datetime(df['timestamp'], unit='s').dt.strftime('%Y-%m-%d')
+            
+            # Keep only the columns we need and average the daily price
+            df = df[['date', 'price']]
+            df = df.groupby('date', as_index=False).mean()
+            return df
+            
+        else:
+            # Force the code to jump to the "except" block below
+            raise ValueError(f"API returned status code {response.status_code}")
+
+    except Exception as e:
+        # 2. THE FALLBACK: If the API is down or the URL doesn't exist yet, do this instead.
+        st.warning("⚠️ Live API endpoint not reachable. Displaying simulated market data.")
+        
+        dates = pd.date_range(start=datetime.now() - timedelta(days=29), end=datetime.now(), freq='D')
+        import random
+        random.seed(42) 
         
         sample_data = []
         base_price = 30000
         
         for i, date in enumerate(dates):
-            # Add some realistic price variation
-            daily_change = random.uniform(-0.05, 0.05)  # ±5% daily variation
-            price = base_price * (1 + daily_change + 0.001 * i)  # Slight upward trend
+            daily_change = random.uniform(-0.05, 0.05)
+            price = base_price * (1 + daily_change + 0.001 * i)
             
             sample_data.append({
                 'date': date.strftime('%Y-%m-%d'),
-                'price': round(price, 2),
-                'volume': random.randint(10, 100)
+                'price': round(price, 2)
             })
-        
+            
         return pd.DataFrame(sample_data)
-        
-    except Exception as e:
-        st.error(f"Error fetching data: {str(e)}")
-        return pd.DataFrame()
 
 def calculate_price_change(df):
     """Calculate price change from yesterday"""
