@@ -1,0 +1,35 @@
+name: Daily Price Scraper
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs at midnight UTC every day
+  workflow_dispatch: # Adds a button so you can trigger it manually
+
+jobs:
+  scrape-and-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install Libraries
+      run: pip install pandas numpy requests beautifulsoup4
+
+    - name: Run Scraper Script
+      run: python update_data.py
+
+    - name: Commit and Push to Database
+      run: |
+        git config --local user.name "GitHub Actions Bot"
+        git config --local user.email "actions@github.com"
+        git add prices.csv
+        git commit -m "Automated daily price update" || echo "No changes to commit"
+        git push
