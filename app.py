@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import requests
-import json
+import random
 
 # Configure the Streamlit page
 st.set_page_config(
@@ -17,28 +16,20 @@ st.set_page_config(
 st.title("📊 NVIDIA H100 GPU Price Tracker")
 st.markdown("Real-time tracking of NVIDIA H100 GPU pricing trends")
 
-# Placeholder JSON URL (replace with actual data source)
+# Placeholder JSON URL (replace with actual data source later)
 JSON_URL = "https://api.example.com/gpu-prices/h100"
 
 @st.cache_data(ttl=3600)  # Cache data for 1 hour
 def fetch_price_data():
     """
-    Fetch price data from JSON API
-    For demo purposes, we'll generate sample data
-    Replace this function with actual API call when you have a real endpoint
+    Fetch price data. For now, this generates realistic sample data 
+    until we connect the live API.
     """
     try:
-        # Uncomment the following lines when you have a real API:
-        # response = requests.get(JSON_URL)
-        # response.raise_for_status()
-        # data = response.json()
-        
-        # Sample data for demonstration
         # Generate 30 days of sample price data
         dates = pd.date_range(start=datetime.now() - timedelta(days=29), end=datetime.now(), freq='D')
         
         # Simulate realistic H100 pricing (around $25,000-$35,000)
-        import random
         random.seed(42)  # For consistent demo data
         
         sample_data = []
@@ -89,17 +80,20 @@ def create_price_chart(df):
         hovertemplate='<b>Date:</b> %{x}<br><b>Price:</b> $%{y:,.2f}<extra></extra>'
     ))
     
-    # Add trend line
-    from scipy import stats
-    df_numeric = df.reset_index()
-    slope, intercept, _, _, _ = stats.linregress(df_numeric.index, df['price'])
-    trend_line = slope * df_numeric.index + intercept
+    # --- FIXED TRENDLINE MATH ---
+    # Using numpy instead of scipy to prevent installation crashes
+    x_numeric = np.arange(len(df))
+    y_values = df['price'].values
+    # Calculate linear regression (1st degree polynomial)
+    z = np.polyfit(x_numeric, y_values, 1)
+    p = np.poly1d(z)
+    trend_line = p(x_numeric)
     
     fig.add_trace(go.Scatter(
         x=df['date'],
         y=trend_line,
         mode='lines',
-        name='Trend Line',
+        name='Linear Trend Line',
         line=dict(color='red', width=2, dash='dash'),
         hovertemplate='<b>Trend:</b> $%{y:,.2f}<extra></extra>'
     ))
@@ -115,8 +109,8 @@ def create_price_chart(df):
         template='plotly_white'
     )
     
-    # Format y-axis to show currency
-    fig.update_yaxis(tickformat='$,.0f')
+    # --- FIXED TYPO: Changed update_yaxis to update_yaxes ---
+    fig.update_yaxes(tickformat='$,.0f')
     
     return fig
 
