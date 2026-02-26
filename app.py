@@ -39,7 +39,7 @@ def scrape_live_h100_price():
         
         if valid_prices:
             # Return the median market rate
-            return np.median(valid_prices)
+            return np.mean(valid_prices)
         else:
             return 2.85 
             
