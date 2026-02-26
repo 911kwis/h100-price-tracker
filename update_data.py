@@ -7,7 +7,7 @@ from datetime import datetime
 import os
 
 def scrape_live_h100_price():
-    url = "https://gpus.io/?sortColumn=pricePerGpu&sortDirection=asc&filter_gpuType=NVIDIA+H100"
+    url = "https://gpus.io/gpus/h100"
     headers = {'User-Agent': 'Mozilla/5.0'}
     try:
         response = requests.get(url, headers=headers, timeout=10)
