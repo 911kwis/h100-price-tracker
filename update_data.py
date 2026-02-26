@@ -15,7 +15,7 @@ def scrape_live_h100_price():
         prices = re.findall(r'\$\s*([0-9]+\.[0-9]{2})', soup.get_text())
         valid_prices = [float(p) for p in prices if 1.0 <= float(p) <= 10.0]
         if valid_prices:
-            return np.median(valid_prices)
+            return np.mean(valid_prices)
     except Exception as e:
         print(f"Error scraping: {e}")
     return None
