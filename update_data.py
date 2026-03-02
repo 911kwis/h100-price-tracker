@@ -1,67 +1,61 @@
 import pandas as pd
 import requests
 import re
-import os
 
-def fetch_api_history(tab):
-    """Hits the hidden Silicon Data API to extract the full historical chart data."""
-    # We use the exact API endpoint you found, dynamically swapping between 'neo-cloud' and 'hyperscaler'
+def fetch_api_data(tab):
     url = f"https://portal.silicondata.com/gpu-index-chart?mainTab={tab}&gpu=h100&_rsc=12tua"
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=15)
+        text = response.text
         
-        # This regular expression scans the raw API payload for dates (YYYY-MM-DD) and their matching prices
-        raw_data = re.findall(r'"(202\d-\d{2}-\d{2})"[^}]*?([\d\.]+)', response.text)
+        # Look for the data patterns like: "2026-02-28", "value": 7.44
+        # This regex is more flexible to handle the RSC format
+        dates = re.findall(r'(\d{4}-\d{2}-\d{2})', text)
+        # Find numbers that look like prices (e.g., 7.44 or 2.90) 
+        # specifically appearing near the dates
+        prices = re.findall(r'(?<=[:,\s])(\d\.\d{2})(?=[,\s\}])', text)
         
-        if raw_data:
-            # Converts the raw data into a clean dictionary: { '2026-02-01': 7.44, ... }
-            return {date: float(price) for date, price in raw_data}
-            
+        # Log to GitHub console for debugging
+        print(f"Tab {tab}: Found {len(dates)} dates and {len(prices)} prices.")
+        
+        if not dates or not prices:
+            return {}
+
+        # Zip them together (keeping the last 30 pairs)
+        data_map = {}
+        for i in range(min(len(dates), len(prices))):
+            data_map[dates[i]] = float(prices[i])
+        return data_map
+        
     except Exception as e:
-        print(f"Failed to fetch {tab} API: {e}")
-        
-    return {}
+        print(f"Error fetching {tab}: {e}")
+        return {}
 
 def main():
-    # 1. Download the complete true history from both hidden APIs
-    hyper_history = fetch_api_history('hyperscaler')
-    neo_history = fetch_api_history('neo-cloud')
+    hyper_map = fetch_api_data('hyperscaler')
+    neo_map = fetch_api_data('neo-cloud')
     
-    if not hyper_history or not neo_history:
-        print("Error: Could not retrieve data from the Silicon Data API.")
+    if not hyper_map and not neo_map:
+        print("CRITICAL: No data found. The API format might have changed.")
         return
 
-    # 2. Combine the two datasets by aligning their dates perfectly
-    combined_data = []
+    # Use all unique dates found
+    all_dates = sorted(list(set(hyper_map.keys()) | set(neo_map.keys())))
     
-    # Get all unique dates from both sets, sorted from oldest to newest
-    all_dates = sorted(list(set(hyper_history.keys()) | set(neo_history.keys())))
+    rows = []
+    # Starting fallbacks in case data is sparse
+    h_val, n_val = 7.44, 2.90 
     
-    last_hyper = 7.44
-    last_neo = 2.90
+    for d in all_dates:
+        h_val = hyper_map.get(d, h_val)
+        n_val = neo_map.get(d, n_val)
+        rows.append({'date': d, 'sd_hyperscaler': h_val, 'sd_neocloud': n_val})
     
-    for date in all_dates:
-        # If a specific day is missing data, carry over yesterday's price (Step-Function logic)
-        last_hyper = hyper_history.get(date, last_hyper)
-        last_neo = neo_history.get(date, last_neo)
-        
-        combined_data.append({
-            'date': date,
-            'sd_hyperscaler': last_hyper,
-            'sd_neocloud': last_neo
-        })
-
-    # 3. Save the exact, perfect history back to the database
-    df = pd.DataFrame(combined_data)
-    file_path = 'prices.csv'
-    df.to_csv(file_path, index=False)
-    
-    print(f"Successfully downloaded full API history! Saved {len(df)} days of exact data.")
+    df = pd.DataFrame(rows)
+    df.to_csv('prices.csv', index=False)
+    print(f"Success! Database updated with {len(df)} rows.")
 
 if __name__ == "__main__":
     main()
